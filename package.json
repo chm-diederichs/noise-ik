@@ -1,0 +1,16 @@
+{
+  "name": "noise-ik",
+  "version": "0.0.0",
+  "description": "",
+  "main": "dh.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "nanoassert": "^2.0.0",
+    "sodium-universal": "^3.0.4"
+  }
+}
