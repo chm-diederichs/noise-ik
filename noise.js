@@ -54,7 +54,8 @@ module.exports.Initiator = class Initiator {
     this.chainingKey = hkdfResult[0]
     this.tempKey = hkdfResult[1]
 
-    const ciphertext = encryptWithAD(this.tempKey, 0, this.digest, ZERO)
+    const keyMaterial = Buffer.concat([this.static.pub, this.tempKey])
+    const ciphertext = encryptWithAD(Buffer.concat([this.static.pub, this.tempKey]), 0, this.digest, ZERO)
     accumulateDigest(this.digest, ciphertext)
 
     const result = Buffer.concat([Buffer.alloc(1), e, s, ciphertext])
@@ -82,60 +83,12 @@ module.exports.Initiator = class Initiator {
     const plaintext = decryptWithAD(this.tempKey, 1, this.digest, tag)
     accumulateDigest(this.digest, ciphertext)
 
-    const finalKeys = hkdf(this.chainingKey, ZERO)
-    this.receiver = this.finalKey(finalKeys[0])
-    this.sender = this.finalKey(finalKeys[1])
-  }
-
-  send (message) {
-    if (!message instanceof Uint8Array) return new Error('message should be serialized into a buffer')
-    let lengthBuf = Buffer.alloc(2)
-    lengthBuf.writeUInt16BE(message.byteLength)
-
-    const header = encryptWithAD(this.sender.key, this.sender.nonce, ZERO, lengthBuf)
-    this.sender.increment()
-
-    const body = encryptWithAD(this.sender.key, this.sender.nonce, ZERO, message)
-    this.sender.increment()
-
-    return Buffer.concat([header, body])
-  }
-
-  receive (buf) {
-    const header = buf.slice(0, 18)
-    const body = buf.slice(18)
-
-    const length = decryptWithAD(this.receiver.key, this.receiver.nonce, ZERO, header)
-    this.receiver.increment()
-
-    const message = decryptWithAD(this.receiver.key, this.receiver.nonce, ZERO, body)
-    this.receiver.increment()
+    const [ recv, send ] = hkdf(this.chainingKey, ZERO)
     
-    if (message.byteLength !== length.readUInt16BE()) return new Error('invalid message: length not as expected')
-  
-    return message
-  }
-
-  finalKey (key) {
-    const self = this
-
-    const obj = {
-      key,
-      nonce: 0
+    return {
+      recv,
+      send
     }
-
-    obj.increment = function () {
-      this.nonce++
-
-      if (this.nonce >= 1000) {
-        const res = hkdf(self.chainingKey, this.key)
-        self.chainingKey = res[0]
-        this.key = res[1]
-        this.nonce = 0
-      }
-    }
-
-    return obj
   }
 }
 
@@ -205,64 +158,15 @@ module.exports.Responder = class Responder {
     this.tempKey = hkdfResult[1]
 
     const tag = encryptWithAD(this.tempKey, 1, this.digest, ZERO)
+    const response = Buffer.concat([Buffer.alloc(1), ciphertext, tag])
     
-    const finalKeys = hkdf(this.chainingKey, ZERO)
-    this.receiver = this.finalKey(finalKeys[0])
-    this.sender = this.finalKey(finalKeys[1])
+    const [ recv, send ] = hkdf(this.chainingKey, ZERO)
 
-    const result = Buffer.concat([Buffer.alloc(1), ciphertext, tag])
-    return result
-  }
-
-  send (message) {
-    if (!message instanceof Uint8Array) return new Error('message should be serialized into a buffer')
-    let lengthBuf = Buffer.alloc(2)
-    lengthBuf.writeUInt16BE(message.byteLength)
-
-    const header = encryptWithAD(this.sender.key, this.sender.nonce, ZERO, lengthBuf)
-    this.sender.increment()
-
-    const body = encryptWithAD(this.sender.key, this.sender.nonce, ZERO, message)
-    this.sender.increment()
-
-    return Buffer.concat([header, body])
-  }
-
-  receive (buf) {
-    const header = buf.slice(0, 18)
-    const body = buf.slice(18)
-
-    const length = decryptWithAD(this.receiver.key, this.receiver.nonce, ZERO, header)
-    this.receiver.increment()
-
-    const message = decryptWithAD(this.receiver.key, this.receiver.nonce, ZERO, body)
-    this.receiver.increment()
-
-    if (message.byteLength !== length.readUInt16BE()) return new Error('invalid message: length not as expected')
-
-    return message
-  }
-
-  finalKey (key) {
-    const self = this
-
-    const obj = {
-      key,
-      nonce: 0
+    return {
+      recv,
+      send,
+      response
     }
-
-    obj.increment = function () {
-      this.nonce++
-
-      if (this.nonce >= 1000) {
-        const res = hkdf(self.chainingKey, this.key)
-        self.chainingKey = res[0]
-        this.key = res[1]
-        this.nonce = 0
-      }
-    }
-
-    return obj
   }
 }
 
